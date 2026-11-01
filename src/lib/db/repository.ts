@@ -75,6 +75,35 @@ export async function completeInvoiceRequest(requestId: string, result: PayPalIn
     .where(eq(invoiceCreationRequests.requestId, requestId));
 }
 
+export async function getInvoiceRequestStatus(requestId: string, invoiceId: string) {
+  const db = getDatabase();
+  const [invoice] = await db
+    .select({
+      id: invoiceCreationRequests.paypalInvoiceId,
+      status: invoiceCreationRequests.paypalStatus,
+      mode: invoiceCreationRequests.mode,
+    })
+    .from(invoiceCreationRequests)
+    .where(
+      and(
+        eq(invoiceCreationRequests.requestId, requestId),
+        eq(invoiceCreationRequests.paypalInvoiceId, invoiceId),
+        eq(invoiceCreationRequests.state, "COMPLETED"),
+      ),
+    )
+    .limit(1);
+
+  return invoice ?? null;
+}
+
+export async function updateInvoiceStatus(invoiceId: string, status: string) {
+  const db = getDatabase();
+  await db
+    .update(invoiceCreationRequests)
+    .set({ paypalStatus: status, updatedAt: new Date() })
+    .where(eq(invoiceCreationRequests.paypalInvoiceId, invoiceId));
+}
+
 export async function failInvoiceRequest(requestId: string, error: unknown) {
   const message = error instanceof Error ? error.message.slice(0, 500) : "Invoice creation failed";
   const db = getDatabase();

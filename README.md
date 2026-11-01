@@ -8,6 +8,8 @@ ClearSettle is an AI revenue copilot for cross-border PayPal merchants. The firs
 - A clearly labeled deterministic demo fallback when no AI key is configured.
 - Editable review and confirmation before any PayPal action.
 - Real PayPal Invoicing API v2 draft creation when sandbox credentials are configured.
+- Separate confirmation to send a draft, with a sandbox buyer link.
+- Live invoice status from verified PayPal webhook events.
 - PostgreSQL-backed idempotency claims before real PayPal writes.
 - Verified, replay-resistant PayPal webhook ingestion with duplicate suppression.
 - No floating-point arithmetic for invoice totals.
@@ -97,7 +99,7 @@ npm run build
 
 ## Current boundary
 
-This slice creates and persists draft invoices and ingests verified invoice webhooks. It still does not send invoices, move money, process webhook jobs asynchronously, or reconcile bank settlements.
+This slice creates, sends, and tracks sandbox invoices through verified webhooks. It still does not process webhook jobs asynchronously or reconcile PayPal activity with bank settlements.
 
 ## License
 

@@ -5,7 +5,13 @@ import { afterAll, afterEach, describe, expect, it } from "vitest";
 
 import { closeDatabase, getDatabase } from "@/lib/db/client";
 import { invoiceCreationRequests, paypalWebhookEvents } from "@/lib/db/schema";
-import { claimInvoiceRequest, completeInvoiceRequest, storePayPalWebhook } from "@/lib/db/repository";
+import {
+  claimInvoiceRequest,
+  completeInvoiceRequest,
+  getInvoiceRequestStatus,
+  storePayPalWebhook,
+  updateInvoiceStatus,
+} from "@/lib/db/repository";
 import type { InvoiceDraft } from "@/lib/invoice";
 
 const runWithDatabase = Boolean(process.env.DATABASE_URL);
@@ -92,5 +98,23 @@ describe.runIf(runWithDatabase)("PostgreSQL persistence", () => {
 
     expect(storedEvent.resourceId).toBe("INV2-INTEGRATION-TEST");
     expect(updatedInvoice.paypalStatus).toBe("PAID");
+  });
+
+  it("authorizes status access by request ID and updates delivery status", async () => {
+    const requestId = randomUUID();
+    requestIds.push(requestId);
+    await claimInvoiceRequest(requestId, "status-payload", draft);
+    await completeInvoiceRequest(requestId, {
+      id: "INV2-STATUS-TEST",
+      status: "DRAFT",
+      mode: "paypal",
+      href: null,
+    });
+
+    expect(await getInvoiceRequestStatus(randomUUID(), "INV2-STATUS-TEST")).toBeNull();
+    expect(await getInvoiceRequestStatus(requestId, "INV2-STATUS-TEST")).toMatchObject({ status: "DRAFT" });
+
+    await updateInvoiceStatus("INV2-STATUS-TEST", "SENT");
+    expect(await getInvoiceRequestStatus(requestId, "INV2-STATUS-TEST")).toMatchObject({ status: "SENT" });
   });
 });

@@ -14,6 +14,12 @@ export type PayPalInvoiceResult = {
   href: string | null;
 };
 
+export type PayPalInvoiceDelivery = {
+  id: string;
+  status: string;
+  payerViewUrl: string | null;
+};
+
 export function paypalPaymentTerm(dueDate: string | null) {
   return dueDate
     ? { term_type: "DUE_ON_DATE_SPECIFIED" as const, due_date: dueDate }
@@ -143,6 +149,29 @@ export async function createPayPalInvoice(draft: InvoiceDraft, requestId: string
     status: data.status || "DRAFT",
     mode: "paypal" as const,
     href: resourceHref,
+  };
+}
+
+export async function sendPayPalInvoice(invoiceId: string): Promise<PayPalInvoiceDelivery> {
+  const token = await accessToken();
+  const response = await fetch(`${baseUrl()}/v2/invoicing/invoices/${encodeURIComponent(invoiceId)}/send`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ send_to_invoicer: false, send_to_recipient: true }),
+    cache: "no-store",
+    signal: AbortSignal.timeout(20_000),
+  });
+
+  const data = (await response.json()) as { href?: string; rel?: string; message?: string };
+  if (!response.ok) throw new Error(data.message || `PayPal invoice sending failed (${response.status})`);
+
+  return {
+    id: invoiceId,
+    status: "SENT",
+    payerViewUrl: data.rel === "payer-view" && data.href ? data.href : null,
   };
 }
 

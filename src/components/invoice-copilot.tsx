@@ -1,11 +1,19 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { invoiceDraftSchema, invoiceTotal, type InvoiceDraft } from "@/lib/invoice";
 
 type Stage = "describe" | "review" | "created";
-type CreatedInvoice = { id: string; status: string; mode: "demo" | "paypal"; href: string | null };
+type CreatedInvoice = {
+  id: string;
+  status: string;
+  mode: "demo" | "paypal";
+  href: string | null;
+  payerViewUrl?: string | null;
+};
+
+const terminalStatuses = new Set(["PAID", "MARKED_AS_PAID", "CANCELLED", "REFUNDED", "MARKED_AS_REFUNDED"]);
 
 const example = "Invoice Acme Corp $1,200 for October product design, due in 14 days. Send it to billing@acme.example.";
 
@@ -20,6 +28,33 @@ export function InvoiceCopilot() {
 
   const stage: Stage = created ? "created" : draft ? "review" : "describe";
   const total = useMemo(() => (draft ? invoiceTotal(draft) : "0.00"), [draft]);
+
+  useEffect(() => {
+    if (
+      !created ||
+      created.mode !== "paypal" ||
+      created.status === "DRAFT" ||
+      terminalStatuses.has(created.status) ||
+      !invoiceRequestId
+    ) return;
+
+    const refresh = async () => {
+      const response = await fetch(`/api/paypal/invoices/${encodeURIComponent(created.id)}`, {
+        headers: { "Invoice-Request-Id": invoiceRequestId },
+        cache: "no-store",
+      });
+      if (!response.ok) return;
+      const result = (await response.json()) as Pick<CreatedInvoice, "id" | "status" | "payerViewUrl">;
+      setCreated((current) => current ? {
+        ...current,
+        status: result.status,
+        payerViewUrl: result.payerViewUrl ?? current.payerViewUrl,
+      } : current);
+    };
+
+    const timer = window.setInterval(refresh, 5_000);
+    return () => window.clearInterval(timer);
+  }, [created, invoiceRequestId]);
 
   async function request<T>(url: string, body: unknown, headers?: Record<string, string>): Promise<T> {
     const response = await fetch(url, {
@@ -65,6 +100,24 @@ export function InvoiceCopilot() {
       setCreated(result);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Unable to create the PayPal invoice");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function sendInvoice() {
+    if (!created || !invoiceRequestId) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await request<Pick<CreatedInvoice, "id" | "status" | "payerViewUrl">>(
+        `/api/paypal/invoices/${encodeURIComponent(created.id)}`,
+        {},
+        { "Invoice-Request-Id": invoiceRequestId },
+      );
+      setCreated({ ...created, ...result });
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Unable to send the PayPal invoice");
     } finally {
       setBusy(false);
     }
@@ -161,10 +214,25 @@ export function InvoiceCopilot() {
         <div className="panel success-panel">
           <span className="success-mark">✓</span>
           <p className="eyebrow">{created.mode === "paypal" ? "PAYPAL SANDBOX" : "DEMO MODE"}</p>
-          <h2>Invoice draft created.</h2>
-          <p>{created.mode === "paypal" ? "PayPal accepted the draft and returned a real sandbox invoice ID." : "The flow works. Add PayPal Sandbox credentials to create the real invoice."}</p>
+          <h2>{created.status === "DRAFT" ? "Invoice draft created." : created.status === "PAID" ? "Invoice paid." : "Invoice sent."}</h2>
+          <p>{created.status === "DRAFT"
+            ? "Review the invoice ID, then explicitly send it when you are ready to notify the sandbox buyer."
+            : "Status refreshes automatically from verified PayPal webhook events."}</p>
           <div className="invoice-id"><span>Invoice ID</span><code>{created.id}</code><b>{created.status}</b></div>
-          <button className="secondary" onClick={reset}>Create another invoice</button>
+          {error && <p className="error" role="alert">{error}</p>}
+          <div className="success-actions">
+            <button className="secondary" onClick={reset}>Create another invoice</button>
+            {created.mode === "paypal" && created.status === "DRAFT" && (
+              <button className="primary" onClick={sendInvoice} disabled={busy}>
+                {busy ? "Sending…" : "Send to sandbox buyer"}<b>↗</b>
+              </button>
+            )}
+            {created.payerViewUrl && (
+              <a className="primary" href={created.payerViewUrl} target="_blank" rel="noreferrer">
+                Open sandbox buyer view<b>↗</b>
+              </a>
+            )}
+          </div>
         </div>
       )}
 
