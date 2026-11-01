@@ -114,7 +114,7 @@ describe.runIf(runWithDatabase)("PostgreSQL persistence", () => {
     expect(await getInvoiceRequestStatus(randomUUID(), "INV2-STATUS-TEST")).toBeNull();
     expect(await getInvoiceRequestStatus(requestId, "INV2-STATUS-TEST")).toMatchObject({ status: "DRAFT" });
 
-    await updateInvoiceStatus("INV2-STATUS-TEST", "SENT");
-    expect(await getInvoiceRequestStatus(requestId, "INV2-STATUS-TEST")).toMatchObject({ status: "SENT" });
+    await updateInvoiceStatus("INV2-STATUS-TEST", "UNPAID");
+    expect(await getInvoiceRequestStatus(requestId, "INV2-STATUS-TEST")).toMatchObject({ status: "UNPAID" });
   });
 });

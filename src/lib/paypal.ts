@@ -158,6 +158,7 @@ export async function sendPayPalInvoice(invoiceId: string): Promise<PayPalInvoic
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
+      Accept: "application/json",
       "Content-Type": "application/json",
     },
     body: JSON.stringify({ send_to_invoicer: false, send_to_recipient: true }),
@@ -165,12 +166,15 @@ export async function sendPayPalInvoice(invoiceId: string): Promise<PayPalInvoic
     signal: AbortSignal.timeout(20_000),
   });
 
-  const data = (await response.json()) as { href?: string; rel?: string; message?: string };
+  const responseBody = await response.text();
+  const data = responseBody
+    ? JSON.parse(responseBody) as { href?: string; rel?: string; message?: string }
+    : {};
   if (!response.ok) throw new Error(data.message || `PayPal invoice sending failed (${response.status})`);
 
   return {
     id: invoiceId,
-    status: "SENT",
+    status: "UNPAID",
     payerViewUrl: data.rel === "payer-view" && data.href ? data.href : null,
   };
 }
