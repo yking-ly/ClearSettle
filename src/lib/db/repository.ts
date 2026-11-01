@@ -86,8 +86,9 @@ export async function failInvoiceRequest(requestId: string, error: unknown) {
 
 export async function storePayPalWebhook(event: PayPalWebhookEvent) {
   const db = getDatabase();
-  const resourceId = typeof event.resource.id === "string" ? event.resource.id : null;
-  const resourceStatus = typeof event.resource.status === "string" ? event.resource.status : null;
+  const nestedInvoice = isRecord(event.resource.invoice) ? event.resource.invoice : event.resource;
+  const resourceId = typeof nestedInvoice.id === "string" ? nestedInvoice.id : null;
+  const resourceStatus = typeof nestedInvoice.status === "string" ? nestedInvoice.status : null;
   const eventCreatedAt = event.create_time ? new Date(event.create_time) : null;
 
   return db.transaction(async (tx) => {
@@ -116,4 +117,8 @@ export async function storePayPalWebhook(event: PayPalWebhookEvent) {
 
     return true;
   });
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

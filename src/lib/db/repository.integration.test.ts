@@ -57,6 +57,16 @@ describe.runIf(runWithDatabase)("PostgreSQL persistence", () => {
   });
 
   it("stores a PayPal event ID exactly once", async () => {
+    const requestId = randomUUID();
+    requestIds.push(requestId);
+    await claimInvoiceRequest(requestId, "webhook-payload", draft);
+    await completeInvoiceRequest(requestId, {
+      id: "INV2-INTEGRATION-TEST",
+      status: "DRAFT",
+      mode: "paypal",
+      href: null,
+    });
+
     const eventId = `WH-TEST-${randomUUID()}`;
     eventIds.push(eventId);
     const event = {
@@ -64,10 +74,23 @@ describe.runIf(runWithDatabase)("PostgreSQL persistence", () => {
       event_type: "INVOICING.INVOICE.PAID",
       create_time: new Date().toISOString(),
       resource_type: "invoice",
-      resource: { id: "INV2-INTEGRATION-TEST", status: "PAID" },
+      resource: { invoice: { id: "INV2-INTEGRATION-TEST", status: "PAID" } },
     };
 
     expect(await storePayPalWebhook(event)).toBe(true);
     expect(await storePayPalWebhook(event)).toBe(false);
+
+    const db = getDatabase();
+    const [storedEvent] = await db
+      .select()
+      .from(paypalWebhookEvents)
+      .where(eq(paypalWebhookEvents.eventId, eventId));
+    const [updatedInvoice] = await db
+      .select()
+      .from(invoiceCreationRequests)
+      .where(eq(invoiceCreationRequests.requestId, requestId));
+
+    expect(storedEvent.resourceId).toBe("INV2-INTEGRATION-TEST");
+    expect(updatedInvoice.paypalStatus).toBe("PAID");
   });
 });
