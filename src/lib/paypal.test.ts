@@ -5,12 +5,21 @@ import { describe, expect, it } from "vitest";
 import {
   invoiceIdFromHref,
   isFreshPayPalTransmission,
+  paypalPaymentTerm,
   paypalWebhookVerificationMessage,
   readPayPalWebhookHeaders,
   verifyPayPalSignature,
 } from "./paypal";
 
 describe("PayPal invoice response parsing", () => {
+  it("uses PayPal's accepted payment terms", () => {
+    expect(paypalPaymentTerm("2026-11-15")).toEqual({
+      term_type: "DUE_ON_DATE_SPECIFIED",
+      due_date: "2026-11-15",
+    });
+    expect(paypalPaymentTerm(null)).toEqual({ term_type: "DUE_ON_RECEIPT" });
+  });
+
   it("extracts a v2 invoice ID from PayPal's create response href", () => {
     expect(
       invoiceIdFromHref("https://api-m.sandbox.paypal.com/v2/invoicing/invoices/INV2-ABCD-EFGH-IJKL-MNOP"),

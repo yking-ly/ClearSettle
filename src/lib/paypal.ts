@@ -14,6 +14,12 @@ export type PayPalInvoiceResult = {
   href: string | null;
 };
 
+export function paypalPaymentTerm(dueDate: string | null) {
+  return dueDate
+    ? { term_type: "DUE_ON_DATE_SPECIFIED" as const, due_date: dueDate }
+    : { term_type: "DUE_ON_RECEIPT" as const };
+}
+
 export const paypalWebhookEventSchema = z
   .object({
     id: z.string().min(1).max(200),
@@ -98,9 +104,7 @@ export async function createPayPalInvoice(draft: InvoiceDraft, requestId: string
       detail: {
         currency_code: draft.currency,
         note: draft.note || undefined,
-        payment_term: draft.due_date
-          ? { term_type: "DUE_ON_DATE", due_date: draft.due_date }
-          : { term_type: "DUE_ON_RECEIPT" },
+        payment_term: paypalPaymentTerm(draft.due_date),
       },
       primary_recipients: [
         {
