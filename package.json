@@ -13,9 +13,9 @@
     "test:integration": "node --env-file=.env.local node_modules/vitest/vitest.mjs run src/lib/db/repository.integration.test.ts"
   },
   "dependencies": {
+    "@google/genai": "^2.32.0",
     "drizzle-orm": "^0.45.4",
     "next": "latest",
-    "openai": "latest",
     "postgres": "^4.0.0",
     "react": "latest",
     "react-dom": "latest",

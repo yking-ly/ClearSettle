@@ -4,7 +4,7 @@ ClearSettle is an AI revenue copilot for cross-border PayPal merchants. The firs
 
 ## What works now
 
-- Natural-language invoice extraction using OpenAI Structured Outputs.
+- Natural-language invoice extraction using Gemini Structured Outputs.
 - A clearly labeled deterministic demo fallback when no AI key is configured.
 - Editable review and confirmation before any PayPal action.
 - Real PayPal Invoicing API v2 draft creation when sandbox credentials are configured.
@@ -31,8 +31,8 @@ The default configuration uses demo mode, so the complete interface works withou
 Set this in `.env.local`:
 
 ```env
-OPENAI_API_KEY=your_key
-OPENAI_MODEL=gpt-6-astra
+GEMINI_API_KEY=your_key
+GEMINI_MODEL=gemini-3.5-flash-lite
 ```
 
 The server uses schema-constrained output and validates the result again with Zod. The API key never reaches the browser.

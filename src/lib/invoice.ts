@@ -52,6 +52,6 @@ export function createDemoDraft(prompt: string): InvoiceDraft {
       ...(email ? [] : ["customer_email"]),
       "due_date",
     ],
-    summary: "Demo extraction created a draft. Add an OpenAI API key for full natural-language extraction.",
+    summary: "Demo extraction created a draft. Add a Gemini API key for full natural-language extraction.",
   };
 }
