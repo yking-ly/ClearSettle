@@ -1,11 +1,13 @@
+import { createSign, generateKeyPairSync } from "node:crypto";
+
 import { describe, expect, it } from "vitest";
 
 import {
-  buildWebhookVerificationPayload,
   invoiceIdFromHref,
   isFreshPayPalTransmission,
-  paypalWebhookEventSchema,
+  paypalWebhookVerificationMessage,
   readPayPalWebhookHeaders,
+  verifyPayPalSignature,
 } from "./paypal";
 
 describe("PayPal invoice response parsing", () => {
@@ -21,14 +23,6 @@ describe("PayPal invoice response parsing", () => {
 });
 
 describe("PayPal webhook validation", () => {
-  const event = paypalWebhookEventSchema.parse({
-    id: "WH-123",
-    event_type: "INVOICING.INVOICE.PAID",
-    create_time: "2026-11-01T09:00:00.000Z",
-    resource_type: "invoice",
-    resource: { id: "INV2-123", status: "PAID" },
-  });
-
   it("requires every signature header and a PayPal certificate URL", () => {
     expect(() => readPayPalWebhookHeaders(new Headers())).toThrow("Missing required PayPal signature headers");
 
@@ -45,7 +39,7 @@ describe("PayPal webhook validation", () => {
     ).toThrow("Invalid PayPal certificate URL");
   });
 
-  it("builds the exact postback verification contract", () => {
+  it("builds PayPal's raw-body CRC32 verification message", () => {
     const headers = readPayPalWebhookHeaders(
       new Headers({
         "paypal-auth-algo": "SHA256withRSA",
@@ -56,15 +50,22 @@ describe("PayPal webhook validation", () => {
       }),
     );
 
-    expect(buildWebhookVerificationPayload(event, headers, "WH-ID")).toEqual({
-      auth_algo: "SHA256withRSA",
-      cert_url: "https://api-m.sandbox.paypal.com/v1/notifications/certs/CERT-123",
-      transmission_id: "transmission-1",
-      transmission_sig: "signature",
-      transmission_time: "2026-11-01T09:00:00.000Z",
-      webhook_id: "WH-ID",
-      webhook_event: event,
-    });
+    expect(paypalWebhookVerificationMessage("123456789", headers, "WH-ID")).toBe(
+      "transmission-1|2026-11-01T09:00:00.000Z|WH-ID|3421780262",
+    );
+  });
+
+  it("verifies an RSA-SHA256 signature", () => {
+    const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
+    const message = "transmission|time|webhook|crc";
+    const signer = createSign("SHA256");
+    signer.update(message);
+    signer.end();
+    const signature = signer.sign(privateKey).toString("base64");
+    const publicKeyPem = publicKey.export({ type: "spki", format: "pem" }).toString();
+
+    expect(verifyPayPalSignature(message, signature, publicKeyPem)).toBe(true);
+    expect(verifyPayPalSignature(`${message}-changed`, signature, publicKeyPem)).toBe(false);
   });
 
   it("rejects stale or malformed transmission times", () => {

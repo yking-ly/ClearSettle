@@ -18,8 +18,9 @@ export async function POST(request: Request) {
 
   let event;
   let signatureHeaders;
+  let rawBody: string;
   try {
-    const rawBody = await request.text();
+    rawBody = await request.text();
     event = paypalWebhookEventSchema.parse(JSON.parse(rawBody));
     signatureHeaders = readPayPalWebhookHeaders(request.headers);
   } catch {
@@ -31,7 +32,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const verified = await verifyPayPalWebhookSignature(event, signatureHeaders);
+    const verified = await verifyPayPalWebhookSignature(rawBody, signatureHeaders);
     if (!verified) return NextResponse.json({ error: "Invalid PayPal webhook signature" }, { status: 401 });
 
     const inserted = await storePayPalWebhook(event);

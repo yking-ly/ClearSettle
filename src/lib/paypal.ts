@@ -1,8 +1,11 @@
+import { createVerify, X509Certificate } from "node:crypto";
+
 import type { InvoiceDraft } from "@/lib/invoice";
 import { z } from "zod";
 
 type Token = { value: string; expiresAt: number };
 let cachedToken: Token | undefined;
+const certificateCache = new Map<string, { pem: string; expiresAt: number }>();
 
 export type PayPalInvoiceResult = {
   id: string;
@@ -168,41 +171,63 @@ export function isFreshPayPalTransmission(transmissionTime: string, now = Date.n
   return Number.isFinite(sentAt) && Math.abs(now - sentAt) <= 5 * 60_000;
 }
 
-export function buildWebhookVerificationPayload(
-  event: PayPalWebhookEvent,
+export function paypalWebhookVerificationMessage(
+  rawBody: string,
   headers: PayPalWebhookHeaders,
   webhookId: string,
 ) {
-  return {
-    auth_algo: headers.authAlgo,
-    cert_url: headers.certUrl,
-    transmission_id: headers.transmissionId,
-    transmission_sig: headers.transmissionSig,
-    transmission_time: headers.transmissionTime,
-    webhook_id: webhookId,
-    webhook_event: event,
-  };
+  return `${headers.transmissionId}|${headers.transmissionTime}|${webhookId}|${crc32(Buffer.from(rawBody, "utf8"))}`;
 }
 
-export async function verifyPayPalWebhookSignature(event: PayPalWebhookEvent, headers: PayPalWebhookHeaders) {
+export function verifyPayPalSignature(message: string, transmissionSignature: string, certificate: string) {
+  const verifier = createVerify("SHA256");
+  verifier.update(message);
+  verifier.end();
+  return verifier.verify(certificate, Buffer.from(transmissionSignature, "base64"));
+}
+
+export async function verifyPayPalWebhookSignature(rawBody: string, headers: PayPalWebhookHeaders) {
   const webhookId = process.env.PAYPAL_WEBHOOK_ID;
   if (!webhookId) throw new Error("PAYPAL_WEBHOOK_ID is not configured");
+  if (headers.authAlgo !== "SHA256withRSA") return false;
 
-  const token = await accessToken();
-  const response = await fetch(`${baseUrl()}/v1/notifications/verify-webhook-signature`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(buildWebhookVerificationPayload(event, headers, webhookId)),
+  const certificate = await getPayPalCertificate(headers.certUrl);
+  const message = paypalWebhookVerificationMessage(rawBody, headers, webhookId);
+  return verifyPayPalSignature(message, headers.transmissionSig, certificate);
+}
+
+function crc32(bytes: Uint8Array) {
+  let crc = 0xffffffff;
+  for (const byte of bytes) {
+    crc ^= byte;
+    for (let bit = 0; bit < 8; bit += 1) {
+      crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0);
+    }
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+async function getPayPalCertificate(certUrl: string) {
+  const now = Date.now();
+  const cached = certificateCache.get(certUrl);
+  if (cached && cached.expiresAt > now) return cached.pem;
+
+  const response = await fetch(certUrl, {
     cache: "no-store",
-    signal: AbortSignal.timeout(15_000),
+    signal: AbortSignal.timeout(10_000),
   });
+  if (!response.ok) throw new Error(`Unable to retrieve PayPal certificate (${response.status})`);
 
-  if (!response.ok) throw new Error(`PayPal webhook verification failed (${response.status})`);
-  const data = (await response.json()) as { verification_status?: string };
-  return data.verification_status === "SUCCESS";
+  const pem = await response.text();
+  const certificate = new X509Certificate(pem);
+  const validFrom = Date.parse(certificate.validFrom);
+  const validTo = Date.parse(certificate.validTo);
+  if (!Number.isFinite(validFrom) || !Number.isFinite(validTo) || now < validFrom || now > validTo) {
+    throw new Error("PayPal signing certificate is not currently valid");
+  }
+
+  certificateCache.set(certUrl, { pem, expiresAt: Math.min(validTo, now + 6 * 60 * 60_000) });
+  return pem;
 }
 
 function isAllowedPayPalCertificateUrl(value: string) {
