@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   invoiceIdFromHref,
   isFreshPayPalTransmission,
+  paypalErrorMessage,
   paypalPaymentTerm,
   paypalWebhookVerificationMessage,
   readPayPalWebhookHeaders,
@@ -12,6 +13,13 @@ import {
 } from "./paypal";
 
 describe("PayPal invoice response parsing", () => {
+  it("prefers PayPal's actionable validation detail", () => {
+    expect(paypalErrorMessage({
+      message: "Request failed",
+      details: [{ description: "Use an international sandbox customer." }],
+    }, "Fallback")).toBe("Use an international sandbox customer.");
+  });
+
   it("uses PayPal's accepted payment terms", () => {
     expect(paypalPaymentTerm("2026-11-15")).toEqual({
       term_type: "DUE_ON_DATE_SPECIFIED",

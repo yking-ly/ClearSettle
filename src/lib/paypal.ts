@@ -20,6 +20,15 @@ export type PayPalInvoiceDelivery = {
   payerViewUrl: string | null;
 };
 
+type PayPalApiError = {
+  message?: string;
+  details?: Array<{ description?: string }>;
+};
+
+export function paypalErrorMessage(error: PayPalApiError, fallback: string) {
+  return error.details?.find((detail) => detail.description)?.description ?? error.message ?? fallback;
+}
+
 export function paypalPaymentTerm(dueDate: string | null) {
   return dueDate
     ? { term_type: "DUE_ON_DATE_SPECIFIED" as const, due_date: dueDate }
@@ -136,12 +145,13 @@ export async function createPayPalInvoice(draft: InvoiceDraft, requestId: string
     href?: string;
     links?: Array<{ rel: string; href: string }>;
     message?: string;
+    details?: Array<{ description?: string }>;
   };
   const resourceHref = data.href ?? data.links?.find((link) => link.rel === "self")?.href ?? null;
   const invoiceId = data.id ?? invoiceIdFromHref(resourceHref);
 
   if (!response.ok || !invoiceId) {
-    throw new Error(data.message || `PayPal invoice creation failed (${response.status})`);
+    throw new Error(paypalErrorMessage(data, `PayPal invoice creation failed (${response.status})`));
   }
 
   return {
@@ -168,9 +178,9 @@ export async function sendPayPalInvoice(invoiceId: string): Promise<PayPalInvoic
 
   const responseBody = await response.text();
   const data = responseBody
-    ? JSON.parse(responseBody) as { href?: string; rel?: string; message?: string }
+    ? JSON.parse(responseBody) as { href?: string; rel?: string } & PayPalApiError
     : {};
-  if (!response.ok) throw new Error(data.message || `PayPal invoice sending failed (${response.status})`);
+  if (!response.ok) throw new Error(paypalErrorMessage(data, `PayPal invoice sending failed (${response.status})`));
 
   return {
     id: invoiceId,
