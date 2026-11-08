@@ -31,3 +31,24 @@ export const paypalWebhookEvents = pgTable(
   },
   (table) => [index("paypal_webhook_events_resource_id_idx").on(table.resourceId), index("paypal_webhook_events_received_at_idx").on(table.receivedAt)],
 );
+
+export const invoiceReminderActions = pgTable(
+  "invoice_reminder_actions",
+  {
+    actionId: uuid("action_id").primaryKey(),
+    paypalInvoiceId: text("paypal_invoice_id").notNull(),
+    delivery: text("delivery").$type<"paypal" | "email">().notNull(),
+    state: text("state").$type<"SENDING" | "SENT" | "FAILED">().notNull(),
+    subject: text("subject"),
+    message: text("message"),
+    recipientEmail: text("recipient_email"),
+    providerId: text("provider_id"),
+    errorMessage: text("error_message"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("invoice_reminder_actions_invoice_id_idx").on(table.paypalInvoiceId),
+    index("invoice_reminder_actions_created_at_idx").on(table.createdAt),
+  ],
+);

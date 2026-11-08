@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { invoiceDraftSchema, invoiceTotal, type InvoiceDraft } from "@/lib/invoice";
+import { isRemindableInvoiceStatus, reminderDraftSchema, type ReminderDraft } from "@/lib/reminder";
 
 type Stage = "describe" | "review" | "created";
 type CreatedInvoice = {
@@ -11,6 +12,14 @@ type CreatedInvoice = {
   mode: "demo" | "paypal";
   href: string | null;
   payerViewUrl?: string | null;
+};
+type ReminderAction = {
+  id: string;
+  delivery: "paypal" | "email";
+  state: "SENDING" | "SENT" | "FAILED";
+  subject: string | null;
+  error: string | null;
+  createdAt: string;
 };
 
 const terminalStatuses = new Set(["PAID", "MARKED_AS_PAID", "CANCELLED", "REFUNDED", "MARKED_AS_REFUNDED"]);
@@ -25,9 +34,18 @@ export function InvoiceCopilot() {
   const [invoiceRequestId, setInvoiceRequestId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [reminder, setReminder] = useState<ReminderDraft | null>(null);
+  const [reminderMode, setReminderMode] = useState<"ai" | "demo" | null>(null);
+  const [reminderBusy, setReminderBusy] = useState<"generate" | "email" | "paypal" | null>(null);
+  const [reminderNotice, setReminderNotice] = useState<string | null>(null);
+  const [reminderActions, setReminderActions] = useState<ReminderAction[]>([]);
 
   const stage: Stage = created ? "created" : draft ? "review" : "describe";
   const total = useMemo(() => (draft ? invoiceTotal(draft) : "0.00"), [draft]);
+  const draftIsValid = useMemo(
+    () => Boolean(draft?.customer_name && draft.customer_email && invoiceDraftSchema.safeParse(draft).success),
+    [draft],
+  );
 
   useEffect(() => {
     if (
@@ -54,6 +72,22 @@ export function InvoiceCopilot() {
 
     const timer = window.setInterval(refresh, 5_000);
     return () => window.clearInterval(timer);
+  }, [created, invoiceRequestId]);
+
+  useEffect(() => {
+    if (!created || created.mode !== "paypal" || !invoiceRequestId || !isRemindableInvoiceStatus(created.status)) return;
+    const controller = new AbortController();
+    fetch(`/api/paypal/invoices/${encodeURIComponent(created.id)}/reminders`, {
+      headers: { "Invoice-Request-Id": invoiceRequestId },
+      cache: "no-store",
+      signal: controller.signal,
+    })
+      .then(async (response) => response.ok ? response.json() as Promise<{ actions: ReminderAction[] }> : null)
+      .then((result) => result && setReminderActions(result.actions))
+      .catch((caught) => {
+        if (!(caught instanceof DOMException && caught.name === "AbortError")) console.error("Unable to load reminder history", caught);
+      });
+    return () => controller.abort();
   }, [created, invoiceRequestId]);
 
   async function request<T>(url: string, body: unknown, headers?: Record<string, string>): Promise<T> {
@@ -87,6 +121,21 @@ export function InvoiceCopilot() {
       setDraft({ ...draft, [key]: value });
       setInvoiceRequestId(crypto.randomUUID());
     }
+  }
+
+  function updateItem(index: number, changes: Partial<InvoiceDraft["items"][number]>) {
+    if (!draft) return;
+    update("items", draft.items.map((item, itemIndex) => itemIndex === index ? { ...item, ...changes } : item));
+  }
+
+  function addItem() {
+    if (!draft || draft.items.length >= 20) return;
+    update("items", [...draft.items, { description: "", quantity: 1, unit_amount: "" }]);
+  }
+
+  function removeItem(index: number) {
+    if (!draft || draft.items.length === 1) return;
+    update("items", draft.items.filter((_, itemIndex) => itemIndex !== index));
   }
 
   async function createInvoice() {
@@ -123,12 +172,66 @@ export function InvoiceCopilot() {
     }
   }
 
+  async function generateReminderDraft() {
+    if (!created || !draft) return;
+    setReminderBusy("generate");
+    setReminderNotice(null);
+    setError(null);
+    try {
+      const result = await request<{ reminder: ReminderDraft; mode: "ai" | "demo" }>("/api/ai/reminder-draft", {
+        invoice_id: created.id,
+        customer_name: draft.customer_name,
+        currency: draft.currency,
+        amount: invoiceTotal(draft),
+        due_date: draft.due_date,
+        status: created.status,
+      });
+      setReminder(reminderDraftSchema.parse(result.reminder));
+      setReminderMode(result.mode);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Unable to draft the reminder");
+    } finally {
+      setReminderBusy(null);
+    }
+  }
+
+  async function sendReminder(delivery: "email" | "paypal") {
+    if (!created || !invoiceRequestId || !reminder) return;
+    setReminderBusy(delivery);
+    setReminderNotice(null);
+    setError(null);
+    try {
+      await request(
+        `/api/paypal/invoices/${encodeURIComponent(created.id)}/reminders`,
+        delivery === "email"
+          ? { delivery, subject: reminder.subject, message: reminder.message }
+          : { delivery },
+        { "Invoice-Request-Id": invoiceRequestId, "Idempotency-Key": crypto.randomUUID() },
+      );
+      setReminderNotice(delivery === "email" ? "Personalized reminder email sent." : "Standard PayPal reminder sent.");
+      const response = await fetch(`/api/paypal/invoices/${encodeURIComponent(created.id)}/reminders`, {
+        headers: { "Invoice-Request-Id": invoiceRequestId },
+        cache: "no-store",
+      });
+      if (response.ok) setReminderActions(((await response.json()) as { actions: ReminderAction[] }).actions);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Unable to send the reminder");
+    } finally {
+      setReminderBusy(null);
+    }
+  }
+
   function reset() {
     setDraft(null);
     setCreated(null);
     setSourceMode(null);
     setInvoiceRequestId(null);
     setError(null);
+    setReminder(null);
+    setReminderMode(null);
+    setReminderBusy(null);
+    setReminderNotice(null);
+    setReminderActions([]);
   }
 
   return (
@@ -182,20 +285,73 @@ export function InvoiceCopilot() {
               <Field label="Customer email">
                 <input type="email" value={draft.customer_email ?? ""} onChange={(e) => update("customer_email", e.target.value || null)} />
               </Field>
-              <Field label="Description" wide>
-                <input value={draft.items[0].description} onChange={(e) => update("items", [{ ...draft.items[0], description: e.target.value }])} />
-              </Field>
-              <Field label="Amount">
-                <div className="money-input"><span>{draft.currency}</span><input inputMode="decimal" value={draft.items[0].unit_amount} onChange={(e) => update("items", [{ ...draft.items[0], unit_amount: e.target.value }])} /></div>
-              </Field>
               <Field label="Due date">
                 <input type="date" value={draft.due_date ?? ""} onChange={(e) => update("due_date", e.target.value || null)} />
               </Field>
             </div>
+            <div className="line-items">
+              <div className="line-items-heading">
+                <h3>Line items</h3>
+                <button className="secondary item-action" type="button" onClick={addItem} disabled={draft.items.length >= 20}>
+                  + Add item
+                </button>
+              </div>
+              {draft.items.map((item, index) => (
+                <fieldset className="line-item" key={index}>
+                  <legend>Item {String(index + 1).padStart(2, "0")}</legend>
+                  <div className="form-grid line-item-grid">
+                    <Field label="Description" wide>
+                      <input
+                        required
+                        maxLength={200}
+                        value={item.description}
+                        onChange={(event) => updateItem(index, { description: event.target.value })}
+                      />
+                    </Field>
+                    <Field label="Quantity">
+                      <input
+                        required
+                        type="number"
+                        min="0.01"
+                        max="1000"
+                        step="any"
+                        value={item.quantity}
+                        onChange={(event) => updateItem(index, { quantity: event.target.valueAsNumber || 0 })}
+                      />
+                    </Field>
+                    <Field label="Unit amount">
+                      <div className="money-input">
+                        <span>{draft.currency}</span>
+                        <input
+                          required
+                          type="number"
+                          min="0.01"
+                          step="0.01"
+                          inputMode="decimal"
+                          placeholder="0.00"
+                          value={item.unit_amount}
+                          onChange={(event) => updateItem(index, { unit_amount: event.target.value })}
+                        />
+                      </div>
+                    </Field>
+                  </div>
+                  {draft.items.length > 1 && (
+                    <button
+                      className="remove-item"
+                      type="button"
+                      onClick={() => removeItem(index)}
+                      aria-label={`Remove item ${index + 1}`}
+                    >
+                      Remove item
+                    </button>
+                  )}
+                </fieldset>
+              ))}
+            </div>
             {error && <p className="error" role="alert">{error}</p>}
             <div className="review-actions">
               <button className="secondary" onClick={reset}>← Start over</button>
-              <button className="primary" onClick={createInvoice} disabled={busy || !draft.customer_name || !draft.customer_email}>
+              <button className="primary" onClick={createInvoice} disabled={busy || !draftIsValid}>
                 {busy ? "Creating…" : "Confirm & create draft"}<b>↗</b>
               </button>
             </div>
@@ -203,7 +359,17 @@ export function InvoiceCopilot() {
           <aside className="total-card">
             <p>INVOICE PREVIEW</p>
             <div className="preview-customer"><span>Bill to</span><strong>{draft.customer_name || "Customer needed"}</strong><small>{draft.customer_email || "Email needed"}</small></div>
-            <div className="preview-item"><span>{draft.items[0].description}</span><strong>{draft.currency} {total}</strong></div>
+            <div className="preview-items">
+              {draft.items.map((item, index) => (
+                <div className="preview-item" key={index}>
+                  <span>
+                    {item.description || `Item ${index + 1}`}
+                    <small>{item.quantity || 0} × {draft.currency} {item.unit_amount || "0.00"}</small>
+                  </span>
+                  <strong>{draft.currency} {invoiceTotal({ ...draft, items: [item] })}</strong>
+                </div>
+              ))}
+            </div>
             <div className="preview-total"><span>Total</span><strong>{draft.currency} {total}</strong></div>
             <p className="estimate-note">Exact PayPal fees appear after payment. This draft does not estimate or promise net proceeds.</p>
           </aside>
@@ -233,6 +399,82 @@ export function InvoiceCopilot() {
               </a>
             )}
           </div>
+          {created.mode === "paypal" && draft && invoiceRequestId && isRemindableInvoiceStatus(created.status) && (
+            <section className="collections-card" aria-labelledby="collections-heading">
+              <div className="collections-heading">
+                <div>
+                  <p className="eyebrow">COLLECTIONS ASSISTANT</p>
+                  <h3 id="collections-heading">Follow up without losing the human touch.</h3>
+                </div>
+                {reminder && <span className={`tone-label ${reminder.tone}`}>{reminder.tone} tone</span>}
+              </div>
+
+              {!reminder ? (
+                <button className="primary" type="button" onClick={generateReminderDraft} disabled={Boolean(reminderBusy)}>
+                  {reminderBusy === "generate" ? "Drafting…" : "Generate AI reminder"}<b>↗</b>
+                </button>
+              ) : (
+                <>
+                  <p className="reminder-rationale"><strong>Why this tone:</strong> {reminder.rationale}</p>
+                  <label className="reminder-field">
+                    <span>Subject</span>
+                    <input
+                      maxLength={160}
+                      value={reminder.subject}
+                      onChange={(event) => setReminder({ ...reminder, subject: event.target.value })}
+                    />
+                  </label>
+                  <label className="reminder-field">
+                    <span>Message</span>
+                    <textarea
+                      maxLength={2_000}
+                      value={reminder.message}
+                      onChange={(event) => setReminder({ ...reminder, message: event.target.value })}
+                    />
+                  </label>
+                  <div className="reminder-actions">
+                    <button
+                      className="primary"
+                      type="button"
+                      onClick={() => sendReminder("email")}
+                      disabled={Boolean(reminderBusy) || !reminderDraftSchema.safeParse(reminder).success}
+                    >
+                      {reminderBusy === "email" ? "Sending…" : "Approve & send email"}<b>↗</b>
+                    </button>
+                    <button
+                      className="secondary"
+                      type="button"
+                      onClick={() => sendReminder("paypal")}
+                      disabled={Boolean(reminderBusy)}
+                    >
+                      {reminderBusy === "paypal" ? "Sending…" : "Send standard PayPal reminder"}
+                    </button>
+                    <button className="text-action" type="button" onClick={generateReminderDraft} disabled={Boolean(reminderBusy)}>
+                      Regenerate
+                    </button>
+                  </div>
+                  <p className="delivery-note">
+                    Personalized email uses the approved text and a verified PayPal payment link. PayPal reminders use PayPal&apos;s standard wording and are limited to two per invoice per day.
+                  </p>
+                </>
+              )}
+
+              {reminderNotice && <p className="notice" role="status">{reminderNotice}</p>}
+              {reminderActions.length > 0 && (
+                <div className="reminder-history">
+                  <h4>Reminder history</h4>
+                  {reminderActions.map((action) => (
+                    <div className="reminder-history-row" key={action.id}>
+                      <span>{action.delivery === "email" ? "Personalized email" : "PayPal reminder"}</span>
+                      <time dateTime={action.createdAt}>{new Date(action.createdAt).toLocaleString()}</time>
+                      <b className={action.state.toLowerCase()}>{action.state}</b>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {reminderMode === "demo" && <p className="delivery-note">Reminder copy is deterministic demo output because no AI key is configured.</p>}
+            </section>
+          )}
         </div>
       )}
 

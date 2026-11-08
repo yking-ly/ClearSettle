@@ -3,7 +3,10 @@ import { z } from "zod";
 export const invoiceItemSchema = z.object({
   description: z.string().trim().min(1).max(200),
   quantity: z.number().positive().max(1_000),
-  unit_amount: z.string().regex(/^\d+(\.\d{1,2})?$/, "Use a positive amount with at most two decimals"),
+  unit_amount: z
+    .string()
+    .regex(/^\d+(\.\d{1,2})?$/, "Use a positive amount with at most two decimals")
+    .refine((amount) => Number(amount) > 0, "Amount must be greater than zero"),
 });
 
 export const invoiceDraftSchema = z.object({

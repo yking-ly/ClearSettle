@@ -4,11 +4,14 @@ import { eq } from "drizzle-orm";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 
 import { closeDatabase, getDatabase } from "@/lib/db/client";
-import { invoiceCreationRequests, paypalWebhookEvents } from "@/lib/db/schema";
+import { invoiceCreationRequests, invoiceReminderActions, paypalWebhookEvents } from "@/lib/db/schema";
 import {
   claimInvoiceRequest,
+  completeReminderAction,
   completeInvoiceRequest,
+  createReminderAction,
   getInvoiceRequestStatus,
+  listReminderActions,
   storePayPalWebhook,
   updateInvoiceStatus,
 } from "@/lib/db/repository";
@@ -17,6 +20,7 @@ import type { InvoiceDraft } from "@/lib/invoice";
 const runWithDatabase = Boolean(process.env.DATABASE_URL);
 const requestIds: string[] = [];
 const eventIds: string[] = [];
+const actionIds: string[] = [];
 
 const draft: InvoiceDraft = {
   is_invoice_request: true,
@@ -33,6 +37,9 @@ const draft: InvoiceDraft = {
 describe.runIf(runWithDatabase)("PostgreSQL persistence", () => {
   afterEach(async () => {
     const db = getDatabase();
+    for (const actionId of actionIds.splice(0)) {
+      await db.delete(invoiceReminderActions).where(eq(invoiceReminderActions.actionId, actionId));
+    }
     for (const eventId of eventIds.splice(0)) {
       await db.delete(paypalWebhookEvents).where(eq(paypalWebhookEvents.eventId, eventId));
     }
@@ -116,5 +123,24 @@ describe.runIf(runWithDatabase)("PostgreSQL persistence", () => {
 
     await updateInvoiceStatus("INV2-STATUS-TEST", "UNPAID");
     expect(await getInvoiceRequestStatus(requestId, "INV2-STATUS-TEST")).toMatchObject({ status: "UNPAID" });
+  });
+
+  it("stores reminder delivery history", async () => {
+    const actionId = randomUUID();
+    actionIds.push(actionId);
+    expect(await createReminderAction({
+      actionId,
+      invoiceId: "INV2-REMINDER-TEST",
+      delivery: "email",
+      subject: "Payment reminder",
+      message: "Please review the outstanding PayPal invoice.",
+      recipientEmail: "buyer@example.com",
+    })).toBe(true);
+    expect(await createReminderAction({ actionId, invoiceId: "INV2-REMINDER-TEST", delivery: "email" })).toBe(false);
+
+    await completeReminderAction(actionId, "email-provider-id");
+    expect(await listReminderActions("INV2-REMINDER-TEST")).toMatchObject([
+      { id: actionId, delivery: "email", state: "SENT", subject: "Payment reminder" },
+    ]);
   });
 });

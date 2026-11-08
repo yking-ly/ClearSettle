@@ -5,11 +5,15 @@ ClearSettle is an AI revenue copilot for cross-border PayPal merchants. The firs
 ## What works now
 
 - Natural-language invoice extraction using Gemini Structured Outputs.
+- Editable multi-item invoices with quantity, unit-price, and total previews.
 - A clearly labeled deterministic demo fallback when no AI key is configured.
 - Editable review and confirmation before any PayPal action.
 - Real PayPal Invoicing API v2 draft creation when sandbox credentials are configured.
 - Separate confirmation to send a draft, with a sandbox buyer link.
 - Live invoice status from verified PayPal webhook events.
+- AI-generated collection reminders with merchant review before delivery.
+- Personalized reminder email through Resend or a standard PayPal-native reminder.
+- Durable reminder delivery history with idempotent email sends.
 - PostgreSQL-backed idempotency claims before real PayPal writes.
 - Verified, replay-resistant PayPal webhook ingestion with duplicate suppression.
 - No floating-point arithmetic for invoice totals.
@@ -38,6 +42,20 @@ GEMINI_MODEL=gemini-3.5-flash-lite
 ```
 
 The server uses schema-constrained output and validates the result again with Zod. The API key never reaches the browser.
+
+## Enable personalized reminder email
+
+Create a Resend API key, verify a sending domain, and add:
+
+```env
+RESEND_API_KEY=your_resend_key
+REMINDER_FROM_EMAIL="ClearSettle <reminders@your-verified-domain.example>"
+REMINDER_TEST_RECIPIENT=your_real_test_inbox@example.com
+```
+
+PayPal Sandbox buyer addresses use non-deliverable `example.com` domains, so `REMINDER_TEST_RECIPIENT` safely routes sandbox messages to a real inbox configured on the server. It is ignored in live mode. The buyer address otherwise comes from the stored PayPal invoice rather than the browser request. The server also retrieves the payer-view URL directly from PayPal before appending it to the approved reminder. Without the Resend variables, the standard PayPal reminder still works.
+
+PayPal's v2 reminder endpoint uses PayPal's system-defined email content even when custom subject or note values are supplied, so the PayPal-native option intentionally does not pretend to send the AI copy. PayPal limits this option to two reminders per invoice per day.
 
 ## Enable PayPal Sandbox
 
@@ -69,7 +87,7 @@ Apply the checked-in migration:
 npm run db:migrate
 ```
 
-The migration creates an invoice request ledger and an immutable PayPal webhook event log. A real PayPal invoice is not created unless this database is configured.
+The migrations create an invoice request ledger, an immutable PayPal webhook event log, and a reminder delivery audit log. A real PayPal invoice is not created unless this database is configured. Run this command again whenever a new migration is added.
 
 ## Register the PayPal webhook
 
@@ -99,7 +117,7 @@ npm run build
 
 ## Current boundary
 
-This slice creates, sends, and tracks sandbox invoices through verified webhooks. It still does not process webhook jobs asynchronously or reconcile PayPal activity with bank settlements.
+This slice creates, sends, and tracks sandbox invoices through verified webhooks, then drafts and sends approved collection reminders. It does not schedule reminders autonomously, process webhook jobs asynchronously, or reconcile PayPal activity with bank settlements.
 
 ## License
 

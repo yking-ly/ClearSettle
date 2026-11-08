@@ -20,6 +20,11 @@ export type PayPalInvoiceDelivery = {
   payerViewUrl: string | null;
 };
 
+export type PayPalReminderDelivery = {
+  id: string;
+  status: "SENT";
+};
+
 type PayPalApiError = {
   message?: string;
   details?: Array<{ description?: string }>;
@@ -187,6 +192,40 @@ export async function sendPayPalInvoice(invoiceId: string): Promise<PayPalInvoic
     status: "UNPAID",
     payerViewUrl: data.rel === "payer-view" && data.href ? data.href : null,
   };
+}
+
+export async function sendPayPalInvoiceReminder(invoiceId: string): Promise<PayPalReminderDelivery> {
+  const token = await accessToken();
+  const response = await fetch(`${baseUrl()}/v2/invoicing/invoices/${encodeURIComponent(invoiceId)}/remind`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ send_to_invoicer: false, send_to_recipient: true }),
+    cache: "no-store",
+    signal: AbortSignal.timeout(20_000),
+  });
+
+  const responseBody = await response.text();
+  const data = responseBody ? JSON.parse(responseBody) as PayPalApiError : {};
+  if (!response.ok) throw new Error(paypalErrorMessage(data, `PayPal reminder failed (${response.status})`));
+  return { id: invoiceId, status: "SENT" };
+}
+
+export async function getPayPalInvoicePayerViewUrl(invoiceId: string) {
+  const token = await accessToken();
+  const response = await fetch(`${baseUrl()}/v2/invoicing/invoices/${encodeURIComponent(invoiceId)}`, {
+    headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+    cache: "no-store",
+    signal: AbortSignal.timeout(20_000),
+  });
+  const data = await response.json() as { links?: Array<{ rel: string; href: string }> } & PayPalApiError;
+  if (!response.ok) throw new Error(paypalErrorMessage(data, `Unable to retrieve PayPal invoice (${response.status})`));
+
+  const payerViewUrl = data.links?.find((link) => link.rel === "payer-view")?.href;
+  if (!payerViewUrl) throw new Error("PayPal did not return a payer-view link for this invoice");
+  return payerViewUrl;
 }
 
 export function invoiceIdFromHref(href: string | null) {
