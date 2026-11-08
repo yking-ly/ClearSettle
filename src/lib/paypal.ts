@@ -220,12 +220,22 @@ export async function getPayPalInvoicePayerViewUrl(invoiceId: string) {
     cache: "no-store",
     signal: AbortSignal.timeout(20_000),
   });
-  const data = await response.json() as { links?: Array<{ rel: string; href: string }> } & PayPalApiError;
+  const data = await response.json() as {
+    detail?: { metadata?: { recipient_view_url?: string } };
+    links?: Array<{ rel: string; href: string }>;
+  } & PayPalApiError;
   if (!response.ok) throw new Error(paypalErrorMessage(data, `Unable to retrieve PayPal invoice (${response.status})`));
 
-  const payerViewUrl = data.links?.find((link) => link.rel === "payer-view")?.href;
+  const payerViewUrl = paypalInvoicePayerViewUrl(data);
   if (!payerViewUrl) throw new Error("PayPal did not return a payer-view link for this invoice");
   return payerViewUrl;
+}
+
+export function paypalInvoicePayerViewUrl(data: {
+  detail?: { metadata?: { recipient_view_url?: string } };
+  links?: Array<{ rel: string; href: string }>;
+}) {
+  return data.detail?.metadata?.recipient_view_url ?? data.links?.find((link) => link.rel === "payer-view")?.href ?? null;
 }
 
 export function invoiceIdFromHref(href: string | null) {

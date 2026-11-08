@@ -6,6 +6,7 @@ import {
   invoiceIdFromHref,
   isFreshPayPalTransmission,
   paypalErrorMessage,
+  paypalInvoicePayerViewUrl,
   paypalPaymentTerm,
   paypalWebhookVerificationMessage,
   readPayPalWebhookHeaders,
@@ -36,6 +37,18 @@ describe("PayPal invoice response parsing", () => {
 
   it("returns null when the response does not identify an invoice", () => {
     expect(invoiceIdFromHref("https://api-m.sandbox.paypal.com/v2/invoicing/invoices")).toBeNull();
+  });
+
+  it("reads the recipient payment URL from current invoice metadata", () => {
+    expect(paypalInvoicePayerViewUrl({
+      detail: { metadata: { recipient_view_url: "https://www.sandbox.paypal.com/invoice/payerView/details/INV2-TEST" } },
+    })).toBe("https://www.sandbox.paypal.com/invoice/payerView/details/INV2-TEST");
+  });
+
+  it("keeps supporting the legacy payer-view link", () => {
+    expect(paypalInvoicePayerViewUrl({
+      links: [{ rel: "payer-view", href: "https://www.sandbox.paypal.com/invoice/payerView/details/INV2-OLD" }],
+    })).toBe("https://www.sandbox.paypal.com/invoice/payerView/details/INV2-OLD");
   });
 });
 
