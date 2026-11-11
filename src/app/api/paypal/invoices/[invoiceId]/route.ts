@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
+import { apiAuthFailure } from "@/lib/auth/server";
 import { isDatabaseConfigured } from "@/lib/db/client";
 import { getInvoiceRequestStatus, updateInvoiceStatus } from "@/lib/db/repository";
 import { sendPayPalInvoice } from "@/lib/paypal";
@@ -11,6 +12,9 @@ const requestIdSchema = z.string().uuid();
 type Context = { params: Promise<{ invoiceId: string }> };
 
 export async function GET(request: Request, context: Context) {
+  const authFailure = await apiAuthFailure();
+  if (authFailure) return authFailure;
+
   try {
     const invoice = await authorizedInvoice(request, context);
     return NextResponse.json({ id: invoice.id, status: invoice.status, payerViewUrl: null });
@@ -20,6 +24,9 @@ export async function GET(request: Request, context: Context) {
 }
 
 export async function POST(request: Request, context: Context) {
+  const authFailure = await apiAuthFailure();
+  if (authFailure) return authFailure;
+
   try {
     const invoice = await authorizedInvoice(request, context);
     if (invoice.mode !== "paypal" || !invoice.id) throw new Error("Only PayPal invoices can be sent");

@@ -1,9 +1,13 @@
 import { NextResponse } from "next/server";
 
 import { extractInvoice } from "@/lib/ai/invoice-extractor";
+import { apiAuthFailure } from "@/lib/auth/server";
 import { invoiceRequestSchema } from "@/lib/invoice";
 
 export async function POST(request: Request) {
+  const authFailure = await apiAuthFailure();
+  if (authFailure) return authFailure;
+
   try {
     const { prompt } = invoiceRequestSchema.parse(await request.json());
     return NextResponse.json(await extractInvoice(prompt));

@@ -1,6 +1,17 @@
-import { InvoiceCopilot } from "@/components/invoice-copilot";
+import { redirect } from "next/navigation";
 
-export default function Home() {
+import { InvoiceCopilot } from "@/components/invoice-copilot";
+import { UserMenu } from "@/components/user-menu";
+import { userInitials } from "@/lib/auth/config";
+import { currentAuthorizedUser } from "@/lib/auth/server";
+
+export const dynamic = "force-dynamic";
+
+export default async function Home() {
+  const user = await currentAuthorizedUser();
+  if (!user) redirect("/sign-in?error=unauthorized");
+  const name = user.name || user.email;
+
   return (
     <main className="shell">
       <header className="topbar">
@@ -10,7 +21,7 @@ export default function Home() {
         </a>
         <div className="topbar-actions">
           <span className="environment"><i /> PayPal sandbox connected</span>
-          <span className="avatar" aria-label="Workspace owner">YN</span>
+          <UserMenu initials={userInitials(user.name, user.email)} name={name} email={user.email} />
         </div>
       </header>
 

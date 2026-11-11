@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
+import { apiAuthFailure } from "@/lib/auth/server";
 import { isDatabaseConfigured } from "@/lib/db/client";
 import { claimInvoiceRequest, completeInvoiceRequest, failInvoiceRequest } from "@/lib/db/repository";
 import { invoiceDraftSchema } from "@/lib/invoice";
@@ -10,6 +11,9 @@ import { createPayPalInvoice, isPayPalConfigured } from "@/lib/paypal";
 const idempotencyKeySchema = z.string().uuid();
 
 export async function POST(request: Request) {
+  const authFailure = await apiAuthFailure();
+  if (authFailure) return authFailure;
+
   let requestId: string | undefined;
   try {
     const draft = invoiceDraftSchema.parse(await request.json());

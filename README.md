@@ -5,6 +5,7 @@ ClearSettle is an AI revenue copilot for cross-border PayPal merchants. The firs
 ## What works now
 
 - Natural-language invoice extraction using Gemini Structured Outputs.
+- Neon Auth email/password sign-in with a server-enforced merchant allowlist.
 - Editable multi-item invoices with quantity, unit-price, and total previews.
 - A clearly labeled deterministic demo fallback when no AI key is configured.
 - Editable review and confirmation before any PayPal action.
@@ -30,7 +31,19 @@ npm run dev
 
 Open <http://localhost:3000>.
 
-The default configuration uses demo mode, so the complete interface works without credentials. Demo mode is visibly labeled and does not call PayPal or an AI model.
+The payment and AI features default to demo mode, but authentication fails closed until Neon Auth is configured.
+
+## Enable authentication
+
+Enable Auth for the Neon project, then add its base URL, a random cookie-signing secret, and the email addresses allowed into this merchant workspace:
+
+```env
+NEON_AUTH_BASE_URL=https://your-neon-auth-host.example
+NEON_AUTH_COOKIE_SECRET=at-least-32-random-characters
+AUTH_ALLOWED_EMAILS=you@example.com,teammate@example.com
+```
+
+Generate a suitable cookie secret with `openssl rand -base64 32`. Add the same variables to Vercel Production and Preview, then redeploy. The sign-up form creates a Neon Auth account, but only an email in `AUTH_ALLOWED_EMAILS` can open the workspace or call its AI, PayPal, and reminder APIs. The PayPal webhook intentionally does not use a browser session; it authenticates PayPal using the signed webhook payload instead.
 
 ## Enable AI extraction
 
@@ -117,7 +130,7 @@ npm run build
 
 ## Current boundary
 
-This slice creates, sends, and tracks sandbox invoices through verified webhooks, then drafts and sends approved collection reminders. It does not schedule reminders autonomously, process webhook jobs asynchronously, or reconcile PayPal activity with bank settlements.
+This slice creates, sends, and tracks sandbox invoices through verified webhooks, then drafts and sends approved collection reminders. The allowlisted users currently share one merchant workspace; it is not a multi-tenant data model. It also does not schedule reminders autonomously, process webhook jobs asynchronously, or reconcile PayPal activity with bank settlements.
 
 ## License
 

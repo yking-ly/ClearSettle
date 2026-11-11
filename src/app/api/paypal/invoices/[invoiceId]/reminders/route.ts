@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
+import { apiAuthFailure } from "@/lib/auth/server";
 import { isDatabaseConfigured } from "@/lib/db/client";
 import {
   completeReminderAction,
@@ -18,6 +19,9 @@ const requestIdSchema = z.string().uuid();
 type Context = { params: Promise<{ invoiceId: string }> };
 
 export async function GET(request: Request, context: Context) {
+  const authFailure = await apiAuthFailure();
+  if (authFailure) return authFailure;
+
   try {
     const invoice = await authorizedInvoice(request, context);
     return NextResponse.json({ actions: await listReminderActions(invoice.id) });
@@ -27,6 +31,9 @@ export async function GET(request: Request, context: Context) {
 }
 
 export async function POST(request: Request, context: Context) {
+  const authFailure = await apiAuthFailure();
+  if (authFailure) return authFailure;
+
   const actionId = requestIdSchema.safeParse(request.headers.get("idempotency-key"));
   if (!actionId.success) return NextResponse.json({ error: "A valid idempotency key is required" }, { status: 400 });
 

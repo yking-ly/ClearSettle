@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@google/genai": "^2.32.0",
+    "@neondatabase/auth": "0.6.0-beta",
     "drizzle-orm": "^0.45.4",
     "next": "latest",
     "postgres": "^4.0.0",
@@ -31,6 +32,13 @@
     "vitest": "latest"
   },
   "overrides": {
+    "@neondatabase/auth": {
+      "zod": "4.6.7"
+    },
+    "@neondatabase/auth-ui": {
+      "zod": "4.6.7"
+    },
+    "better-auth": "1.7.21",
     "minimatch": "^11.0.1"
   }
 }
