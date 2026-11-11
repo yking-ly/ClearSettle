@@ -25,6 +25,11 @@ type ReminderAction = {
 const terminalStatuses = new Set(["PAID", "MARKED_AS_PAID", "CANCELLED", "REFUNDED", "MARKED_AS_REFUNDED"]);
 
 const example = "Invoice Acme Corp $1,200 for October product design, due in 14 days. Send it to billing@acme.example.";
+const promptSuggestions = [
+  "Website project · $2,400 · due in 14 days",
+  "Monthly consulting · $850 · due on receipt",
+  "Brand workshop · $1,250 · due next Friday",
+];
 
 export function InvoiceCopilot() {
   const [prompt, setPrompt] = useState(example);
@@ -254,6 +259,14 @@ export function InvoiceCopilot() {
             <span className="safe-label">No invoice is sent without approval</span>
           </div>
           <label className="prompt-label" htmlFor="invoice-prompt">Describe the invoice in your own words</label>
+          <div className="prompt-suggestions" aria-label="Example invoice prompts">
+            <span>Try an example</span>
+            {promptSuggestions.map((suggestion) => (
+              <button key={suggestion} type="button" onClick={() => setPrompt(`Create an invoice for ${suggestion}. Send it to client@example.com.`)}>
+                {suggestion}
+              </button>
+            ))}
+          </div>
           <textarea
             id="invoice-prompt"
             value={prompt}
@@ -384,6 +397,11 @@ export function InvoiceCopilot() {
           <p>{created.status === "DRAFT"
             ? "Review the invoice ID, then explicitly send it when you are ready to notify the sandbox buyer."
             : "Status refreshes automatically from verified PayPal webhook events."}</p>
+          <div className="status-strip" aria-label="Invoice delivery status">
+            <div><span>Current status</span><strong>{created.status.replaceAll("_", " ")}</strong></div>
+            <div><span>Payment rail</span><strong>{created.mode === "paypal" ? "PayPal sandbox" : "Demo"}</strong></div>
+            <div><span>Status sync</span><strong>{created.mode === "paypal" ? "Webhook verified" : "Simulated"}</strong></div>
+          </div>
           <div className="invoice-id"><span>Invoice ID</span><code>{created.id}</code><b>{created.status}</b></div>
           {error && <p className="error" role="alert">{error}</p>}
           <div className="success-actions">
@@ -484,7 +502,7 @@ export function InvoiceCopilot() {
 }
 
 function Step({ number, label, active, done }: { number: string; label: string; active: boolean; done: boolean }) {
-  return <div className={`step ${active ? "active" : ""} ${done ? "done" : ""}`}><span>{done ? "✓" : number}</span><strong>{label}</strong></div>;
+  return <div className={`step ${active ? "active" : ""} ${done ? "done" : ""}`} aria-current={active ? "step" : undefined}><span>{done ? "✓" : number}</span><strong>{label}</strong></div>;
 }
 
 function Field({ label, wide, children }: { label: string; wide?: boolean; children: React.ReactNode }) {

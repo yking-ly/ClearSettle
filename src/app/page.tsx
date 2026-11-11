@@ -6,28 +6,38 @@ export default function Home() {
       <header className="topbar">
         <a className="brand" href="#top" aria-label="ClearSettle home">
           <span className="brand-mark">C</span>
-          <span>ClearSettle</span>
+          <span>ClearSettle<small>Revenue copilot</small></span>
         </a>
         <div className="topbar-actions">
-          <span className="environment"><i /> Sandbox workspace</span>
-          <button className="avatar" aria-label="Open account menu">YN</button>
+          <span className="environment"><i /> PayPal sandbox connected</span>
+          <span className="avatar" aria-label="Workspace owner">YN</span>
         </div>
       </header>
 
       <section className="hero" id="top">
-        <div>
+        <div className="hero-intro">
           <p className="eyebrow">PAYPAL REVENUE COPILOT</p>
           <h1>From finished work<br />to a clear payment.</h1>
           <p className="hero-copy">
             Describe what you delivered. ClearSettle drafts the invoice, checks what is missing,
             and prepares it for PayPal—without moving money until you confirm.
           </p>
+          <div className="hero-proof" aria-label="How ClearSettle works">
+            <div><span>01</span><strong>Describe</strong><small>Use plain language</small></div>
+            <div><span>02</span><strong>Approve</strong><small>Stay in control</small></div>
+            <div><span>03</span><strong>Collect</strong><small>Track every follow-up</small></div>
+          </div>
         </div>
         <div className="promise-card">
-          <span className="promise-icon">↗</span>
-          <div>
+          <div className="promise-topline">
+            <span className="promise-icon">↗</span>
             <small>PRODUCT PROMISE</small>
-            <strong>Understand every step<br />between billed and banked.</strong>
+          </div>
+          <strong>Understand every step between billed and banked.</strong>
+          <div className="promise-list">
+            <span><i /> AI-assisted, never auto-sent</span>
+            <span><i /> Verified PayPal status events</span>
+            <span><i /> Human-approved follow-ups</span>
           </div>
         </div>
       </section>
@@ -35,7 +45,7 @@ export default function Home() {
       <InvoiceCopilot />
 
       <footer>
-        <span>Built for cross-border independents</span>
+        <span><b>ClearSettle</b> · Built for cross-border independents</span>
         <span>AI drafts. You decide. PayPal moves the money.</span>
       </footer>
     </main>
