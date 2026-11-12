@@ -2,9 +2,15 @@
 
 **An AI revenue copilot that turns completed work into a reviewed PayPal invoice, tracks payment status, and helps merchants follow up without losing control.**
 
-- Hosted app: [clearsettle.vercel.app](https://clearsettle.vercel.app/)
 - Devpost submission copy: [docs/DEVPOST_SUBMISSION.md](docs/DEVPOST_SUBMISSION.md)
 - License: [MIT](LICENSE)
+
+## Demo
+
+- Live application: [clearsettle.vercel.app](https://clearsettle.vercel.app/)
+- Demo video: `[ADD PUBLIC YOUTUBE URL]`
+- Environment: PayPal Sandbox; no real money is moved
+- Judge access: provide authentication instructions through the Devpost submission without publishing passwords or infrastructure secrets
 
 ## The problem
 
@@ -28,22 +34,22 @@ ClearSettle never creates, sends, or follows up on an invoice solely because the
 
 - Gemini Structured Outputs for natural-language invoice extraction.
 - Editable multi-item invoices with quantity, unit price, and exact total previews.
-- Deterministic, visibly labeled demo extraction when no Gemini key is configured.
+- Deterministic, visibly labeled demo extraction when `DEMO_MODE=true` and no Gemini key is configured.
 - PayPal Sandbox invoice creation, sending, and buyer checkout.
 - Live invoice status from verified PayPal webhook events.
 - AI-generated collection reminders with editable tone and content.
 - Personalized reminder delivery through Resend and PayPal-native reminders.
 - Neon PostgreSQL ledgers for invoice idempotency, webhook events, and reminder history.
 - Neon Auth email/password sessions with a server-enforced merchant email allowlist.
-- Replay-resistant webhooks, duplicate suppression, and integer-based money calculations.
+- Replay-resistant webhooks, duplicate suppression, and currency values converted to integer minor units before totaling.
 
 ## Why the AI integration is meaningful
 
 AI is used for work that depends on language and context rather than for payment authorization:
 
 - It extracts invoice fields and multiple line items from an unstructured description.
-- It identifies missing or ambiguous information before the PayPal request is created.
-- It drafts a reminder using the customer, invoice amount, due date, lateness, and prior context.
+- It reports missing required invoice information before the PayPal request is created.
+- It drafts a reminder using the customer, invoice amount, due date, and current payment status.
 - Its output is schema-constrained, validated again on the server, displayed for editing, and never auto-sent.
 
 ## Why the PayPal integration is meaningful
@@ -141,15 +147,16 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 6. Store the resulting webhook ID as `PAYPAL_WEBHOOK_ID`.
 7. Use a Sandbox Personal account as the invoice buyer.
 
-The PayPal Webhooks Simulator does not support the postback verification used here. Test the full flow with a real Sandbox invoice event.
+ClearSettle verifies webhook signatures locally with PayPal's certificate, the original request body, and the registered webhook ID. Simulator events are signed for the special mock ID `WEBHOOK_ID`, while this deployment uses its registered Sandbox webhook ID, so test the configured end-to-end flow with a real Sandbox invoice event.
 
 ### Neon Auth setup
 
 1. Enable Auth for the Neon production branch.
-2. Use the generated branch Auth URL as `NEON_AUTH_BASE_URL`.
-3. Generate `NEON_AUTH_COOKIE_SECRET` locally.
-4. Put the merchant's sign-in email in `AUTH_ALLOWED_EMAILS`.
-5. Add the same values to Vercel Production and Preview before deploying the auth-enabled commit.
+2. Under Neon Better Auth → Domains, add the deployed application origin, such as `https://clearsettle.vercel.app`. Enable localhost access only for local development.
+3. Use the generated branch Auth URL as `NEON_AUTH_BASE_URL`. When using the Neon–Vercel integration, let it inject the branch-appropriate URL for each deployment.
+4. Generate `NEON_AUTH_COOKIE_SECRET` locally.
+5. Put the merchant's sign-in email in `AUTH_ALLOWED_EMAILS`.
+6. Configure the cookie secret and allowlist for the required Vercel environments. Do not reuse a production branch Auth URL for an isolated preview branch.
 
 ### Personalized reminder setup
 
@@ -161,10 +168,10 @@ PayPal-native reminders use PayPal's system-defined email content. ClearSettle d
 
 - PayPal, Gemini, Resend, database, and cookie secrets remain server-side.
 - Every merchant-facing API checks the Neon Auth session and email allowlist.
-- The PayPal webhook is session-free because PayPal calls it; it instead requires PayPal signature headers, a fresh transmission timestamp, and successful PayPal postback verification.
+- The PayPal webhook is session-free because PayPal calls it; it instead requires PayPal signature headers, a fresh transmission timestamp, and successful local certificate and signature verification.
 - Invoice creation and reminder delivery use idempotency keys and durable database claims.
 - Duplicate PayPal event IDs are stored once.
-- Invoice totals use integer minor units rather than floating-point arithmetic.
+- Currency values are converted to integer minor units before invoice totals are calculated.
 - AI output crosses a Zod validation boundary and remains editable.
 - Financial and communication actions always require merchant confirmation.
 

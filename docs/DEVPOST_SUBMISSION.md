@@ -34,7 +34,7 @@ For an unpaid invoice, ClearSettle becomes a collections copilot. It uses the in
 
 The application uses Next.js 16, React, and TypeScript on Vercel. Gemini Structured Outputs converts natural-language requests into a schema-constrained invoice and drafts contextual reminders. Zod validates model and request data at the server boundary.
 
-PayPal Invoicing API v2 creates, sends, and reminds invoices. PayPal webhook postback verification authenticates status events. Neon PostgreSQL stores idempotent invoice creation requests, immutable webhook events, and reminder delivery attempts. Neon Auth provides email/password sessions and a server-side merchant allowlist. Resend delivers approved custom reminders.
+PayPal Invoicing API v2 creates, sends, and reminds invoices. Local certificate and signature verification authenticates PayPal webhook events. Neon PostgreSQL stores idempotent invoice creation requests, immutable webhook events, and reminder delivery attempts. Neon Auth provides email/password sessions and a server-side merchant allowlist. Resend delivers approved custom reminders.
 
 All external credentials remain server-side. Invoice creation, invoice sending, and reminder delivery are distinct merchant-approved actions.
 
@@ -61,7 +61,7 @@ Without AI, merchants would still have to manually translate project language in
 
 The most important challenge was building a reliable boundary between probabilistic AI output and financial APIs. We addressed it with structured model output, independent Zod validation, editable review screens, and explicit confirmation before every side effect.
 
-PayPal webhook verification required preserving the original request, collecting all signature headers, rejecting stale transmissions, and calling PayPal's verification endpoint before trusting an event. We also made invoice and reminder operations idempotent so retries do not create duplicate financial or communication actions.
+PayPal webhook verification required preserving the original request, collecting all signature headers, rejecting stale transmissions, calculating the raw-body CRC32 value, and validating the RSA signature against PayPal's certificate before trusting an event. We also made invoice and reminder operations idempotent so retries do not create duplicate financial or communication actions.
 
 Sandbox email addresses are intentionally non-deliverable, so personalized reminder testing required a server-side test-recipient override that is disabled outside Sandbox mode.
 
@@ -69,7 +69,7 @@ Sandbox email addresses are intentionally non-deliverable, so personalized remin
 
 - Completed a real PayPal Sandbox lifecycle from AI-generated invoice through payment confirmation.
 - Verified and persisted the `INVOICING.INVOICE.PAID` webhook event.
-- Added editable multi-item invoices with exact money calculations.
+- Added editable multi-item invoices with currency values converted to integer minor units before totaling.
 - Built an AI collections workflow that still requires human approval.
 - Added two honest reminder channels: PayPal's standard content and separately approved personalized email.
 - Implemented idempotency, webhook replay resistance, authentication, and durable audit history in a hackathon-sized product.
