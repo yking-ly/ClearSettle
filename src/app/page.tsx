@@ -2,14 +2,15 @@ import { redirect } from "next/navigation";
 
 import { InvoiceCopilot } from "@/components/invoice-copilot";
 import { UserMenu } from "@/components/user-menu";
-import { userInitials } from "@/lib/auth/config";
-import { currentAuthorizedUser } from "@/lib/auth/server";
+import { isAllowedAuthEmail, userInitials } from "@/lib/auth/config";
+import { currentUser } from "@/lib/auth/server";
 
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
-  const user = await currentAuthorizedUser();
-  if (!user) redirect("/sign-in?error=unauthorized");
+  const user = await currentUser();
+  if (!user) redirect("/sign-in");
+  if (!isAllowedAuthEmail(user.email)) redirect("/sign-in?error=unauthorized");
   const name = user.name || user.email;
 
   return (

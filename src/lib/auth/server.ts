@@ -22,11 +22,10 @@ export function authHandler() {
   return getAuth().handler();
 }
 
-export async function currentAuthorizedUser() {
+export async function currentUser() {
   const { data, error } = await getAuth().getSession();
   if (error) throw new Error(error.message);
-  if (!data?.user || !isAllowedAuthEmail(data.user.email)) return null;
-  return data.user;
+  return data?.user ?? null;
 }
 
 export async function apiAuthFailure() {
