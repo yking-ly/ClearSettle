@@ -16,20 +16,25 @@ export function AuthForm({ unauthorized = false }: { unauthorized?: boolean }) {
     setBusy(true);
     setError("");
 
-    const form = new FormData(event.currentTarget);
-    const email = String(form.get("email") ?? "");
-    const password = String(form.get("password") ?? "");
-    const result = creating
-      ? await authClient.signUp.email({ email, password, name: String(form.get("name") ?? "") })
-      : await authClient.signIn.email({ email, password });
+    try {
+      const form = new FormData(event.currentTarget);
+      const email = String(form.get("email") ?? "");
+      const password = String(form.get("password") ?? "");
+      const result = creating
+        ? await authClient.signUp.email({ email, password, name: String(form.get("name") ?? "") })
+        : await authClient.signIn.email({ email, password });
 
-    if (result.error) {
-      setError(result.error.message || "Unable to authenticate");
+      if (result.error) {
+        setError(result.error.message || "Unable to authenticate");
+        return;
+      }
+      router.push("/");
+      router.refresh();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Authentication is temporarily unavailable");
+    } finally {
       setBusy(false);
-      return;
     }
-    router.push("/");
-    router.refresh();
   }
 
   return (
